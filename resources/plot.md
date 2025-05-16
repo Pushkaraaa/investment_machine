@@ -142,5 +142,3 @@ graph TD
     class CIO cio;
     class HITL hitl;
 
-    class "Market Research and Screening Team","Fundamental Analysis Team","News, Sentiment and Institutional Desk","Quantitative Strategy Team", "Core Orchestration and Strategy", "Human Supervision", "External Data and APIs" team_group;
-    class "Layer 1 Monitoring and Screening", "Layer 2 Deep Evaluation and Due Diligence", "Layer 3 Portfolio Management and Execution" team_group;
