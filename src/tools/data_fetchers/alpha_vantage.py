@@ -3,6 +3,7 @@ import requests
 from typing import Dict, Any, Optional
 import pandas as pd
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -17,98 +18,93 @@ class AlphaVantageClient:
         Initialize the Alpha Vantage client.
         
         Args:
-            api_key: Alpha Vantage API key. If not provided, looks for
-                     ALPHA_VANTAGE_API_KEY environment variable.
+            api_key: Alpha Vantage API key. If not provided, will look for 
+                    ALPHA_VANTAGE_API_KEY environment variable.
         """
         self.api_key = api_key or os.getenv("ALPHA_VANTAGE_API_KEY")
         if not self.api_key:
             raise ValueError(
-                "Alpha Vantage API key must be provided or set as ALPHA_VANTAGE_API_KEY environment variable"
+                "Alpha Vantage API key must be provided "
+                "or set as ALPHA_VANTAGE_API_KEY environment variable"
             )
     
     def _make_request(self, params: Dict[str, str]) -> Dict[str, Any]:
         """
-        Make a GET request to the Alpha Vantage API.
+        Make a request to the Alpha Vantage API.
         
         Args:
-            params: Query parameters for the request.
+            params: Query parameters for the request
+            
         Returns:
-            Parsed JSON response.
+            API response as a dictionary
+            
         Raises:
-            ValueError on API errors, requests.RequestException on network issues.
+            requests.RequestException: If the request fails
+            ValueError: On API-side errors
         """
         params["apikey"] = self.api_key
+        
         try:
-            resp = requests.get(self.BASE_URL, params=params, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
+            response = requests.get(self.BASE_URL, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
         except requests.RequestException as e:
-            logger.error(f"HTTP request failed: {e}")
+            logger.error(f"Request to Alpha Vantage failed: {e}")
             raise
         
         if "Error Message" in data:
-            msg = data["Error Message"]
-            logger.error(f"Alpha Vantage API error: {msg}")
-            raise ValueError(f"Alpha Vantage API error: {msg}")
+            logger.error(f"Alpha Vantage API error: {data['Error Message']}")
+            raise ValueError(f"Alpha Vantage API error: {data['Error Message']}")
         
         if "Note" in data:
-            note = data["Note"]
-            logger.warning(f"Alpha Vantage API note: {note}")
+            logger.warning(f"Alpha Vantage API note: {data['Note']}")
         
         return data
-    
+
     def get_daily_adjusted(self, symbol: str, outputsize: str = "compact") -> pd.DataFrame:
         """
         Get daily adjusted time series for a symbol.
         
         Args:
-            symbol: Stock symbol (e.g., "AAPL" or "MSFT").
-            outputsize: "compact" (last 100 points) or "full" (full history).
+            symbol: Stock symbol (e.g., "IBM")
+            outputsize: "compact" for last 100 data points, "full" for full history
+            
         Returns:
-            DataFrame indexed by date with columns: open, high, low, close, adjusted_close, volume, dividend_amount, split_coefficient.
+            DataFrame with daily adjusted OHLCV data
         """
         params = {
             "function": "TIME_SERIES_DAILY_ADJUSTED",
             "symbol": symbol,
             "outputsize": outputsize
         }
-        data = self._make_request(params)
-        series = data.get("Time Series (Daily)", {})
-        if not series:
-            return pd.DataFrame()
         
-        df = pd.DataFrame.from_dict(series, orient="index")
+        data = self._make_request(params)
+        time_series = data.get("Time Series (Daily)", {})
+        if not time_series:
+            return pd.DataFrame()
+            
+        df = pd.DataFrame.from_dict(time_series, orient="index")
         df.index = pd.to_datetime(df.index)
-        df.columns = [
-            "open", "high", "low", "close", "adjusted_close",
-            "volume", "dividend_amount", "split_coefficient"
-        ]
-        return df.apply(pd.to_numeric)
+        df = df.sort_index()
+        # Rename columns from "1. open" → "open", etc.
+        df.columns = [col.split(". ")[1] for col in df.columns]
+        # Convert all columns to numeric
+        df = df.apply(pd.to_numeric)
+        return df
     
     def get_company_overview(self, symbol: str) -> Dict[str, Any]:
-        """
-        Get company overview for a symbol.
-        
-        Args:
-            symbol: Stock symbol.
-        Returns:
-            Dictionary with company fundamentals (e.g., MarketCapitalization, PERatio).
-        """
         params = {"function": "OVERVIEW", "symbol": symbol}
         return self._make_request(params)
-    
+
     def get_income_statement(self, symbol: str) -> Dict[str, Any]:
-        """Get annual and quarterly income statements."""
         params = {"function": "INCOME_STATEMENT", "symbol": symbol}
         return self._make_request(params)
     
     def get_balance_sheet(self, symbol: str) -> Dict[str, Any]:
-        """Get annual and quarterly balance sheets."""
         params = {"function": "BALANCE_SHEET", "symbol": symbol}
         return self._make_request(params)
     
     def get_cash_flow(self, symbol: str) -> Dict[str, Any]:
-        """Get annual and quarterly cash flow statements."""
         params = {"function": "CASH_FLOW", "symbol": symbol}
         return self._make_request(params)
     
@@ -120,13 +116,7 @@ class AlphaVantageClient:
         time_to: Optional[str] = None,
         limit: int = 50
     ) -> Dict[str, Any]:
-        """
-        Get news and sentiment data.
-        """
-        params: Dict[str, str] = {
-            "function": "NEWS_SENTIMENT",
-            "limit": str(limit)
-        }
+        params: Dict[str, str] = {"function": "NEWS_SENTIMENT", "limit": str(limit)}
         if symbol:
             params["tickers"] = symbol
         if topics:
@@ -139,14 +129,14 @@ class AlphaVantageClient:
     
     def calculate_key_metrics(self, symbol: str) -> Dict[str, Any]:
         """
-        Calculate key financial metrics: P/E, P/B, dividend yield, margins, ROE, ROA, debt/equity.
+        Calculate P/E, P/B, dividend yield, margins, ROE, ROA, and debt/equity.
         """
         try:
             ov = self.get_company_overview(symbol)
             inc = self.get_income_statement(symbol)
             bal = self.get_balance_sheet(symbol)
             
-            metrics: Dict[str, Any] = {
+            metrics = {
                 "Price": float(ov.get("Price", 0)),
                 "MarketCap": float(ov.get("MarketCapitalization", 0)),
                 "PE_Ratio": float(ov.get("PERatio", 0)),
@@ -155,14 +145,14 @@ class AlphaVantageClient:
             }
             
             if inc.get("annualReports") and bal.get("annualReports"):
-                li = inc["annualReports"][0]
-                lb = bal["annualReports"][0]
+                latest_inc = inc["annualReports"][0]
+                latest_bal = bal["annualReports"][0]
                 
-                rev = float(li.get("totalRevenue", 0))
-                net = float(li.get("netIncome", 0))
-                assets = float(lb.get("totalAssets", 0))
-                equity = float(lb.get("totalShareholderEquity", 0))
-                debt = float(lb.get("shortLongTermDebtTotal", 0))
+                rev = float(latest_inc.get("totalRevenue", 0))
+                net = float(latest_inc.get("netIncome", 0))
+                assets = float(latest_bal.get("totalAssets", 0))
+                equity = float(latest_bal.get("totalShareholderEquity", 0))
+                debt = float(latest_bal.get("shortLongTermDebtTotal", 0))
                 
                 metrics.update({
                     "NetProfitMargin": (net / rev * 100) if rev else 0,
@@ -172,23 +162,7 @@ class AlphaVantageClient:
                 })
             
             return metrics
-        
         except Exception as e:
             logger.error(f"Error calculating metrics for {symbol}: {e}")
             return {"error": str(e)}
 
-# Example usage:
-if __name__ == "__main__":
-    client = AlphaVantageClient(api_key="YOUR_API_KEY")
-    
-    # Fetch and print company overview
-    overview = client.get_company_overview("AAPL")
-    print("Overview:", overview)
-    
-    # Fetch and preview daily adjusted data
-    df = client.get_daily_adjusted("AAPL", outputsize="compact")
-    print(df.head())
-    
-    # Calculate key metrics
-    metrics = client.calculate_key_metrics("AAPL")
-    print("Key Metrics:", metrics)
