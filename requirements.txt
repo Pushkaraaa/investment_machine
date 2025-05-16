@@ -1,0 +1,33 @@
+# LLM and LangGraph dependencies
+langchain>=0.1.0
+langgraph>=0.0.20
+langchain-openai>=0.0.2
+pydantic>=2.5.0
+
+# Vector database
+chromadb>=0.4.18
+sentence-transformers>=2.2.2
+
+# Data handling and analysis
+pandas>=2.0.0
+numpy>=1.24.0
+yfinance>=0.2.33
+ta-lib-python>=0.4.28
+requests>=2.31.0
+aiohttp>=3.8.6
+beautifulsoup4>=4.12.2
+python-dotenv>=1.0.0
+
+# Visualization and notebooks
+matplotlib>=3.7.2
+seaborn>=0.12.2
+jupyter>=1.0.0
+ipykernel>=6.25.0
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Utilities
+tqdm>=4.66.1
+loguru>=0.7.0 
